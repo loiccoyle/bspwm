@@ -388,4 +388,15 @@ struct pending_rule_t {
 	pending_rule_t *next;
 };
 
+typedef struct {
+	int16_t h_x;
+	int16_t h_y;
+	int16_t v_x;
+	int16_t v_y;
+	int16_t width;
+	int16_t height;
+	xcb_window_t h_line;
+	xcb_window_t v_line;
+} resize_indicators_t;
+
 #endif

@@ -61,6 +61,7 @@ bool focus_follows_pointer;
 bool pointer_follows_focus;
 bool pointer_follows_monitor;
 int8_t click_to_focus;
+bool resize_on_release;
 bool swallow_first_click;
 bool ignore_ewmh_focus;
 bool ignore_ewmh_struts;
@@ -124,6 +125,7 @@ void load_settings(void)
 	pointer_follows_focus = POINTER_FOLLOWS_FOCUS;
 	pointer_follows_monitor = POINTER_FOLLOWS_MONITOR;
 	click_to_focus = CLICK_TO_FOCUS;
+	resize_on_release = RESIZE_ON_RELEASE;
 	swallow_first_click = SWALLOW_FIRST_CLICK;
 	ignore_ewmh_focus = IGNORE_EWMH_FOCUS;
 	ignore_ewmh_fullscreen = IGNORE_EWMH_FULLSCREEN;

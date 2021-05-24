@@ -55,6 +55,7 @@
 #define POINTER_FOLLOWS_FOCUS       false
 #define POINTER_FOLLOWS_MONITOR     false
 #define CLICK_TO_FOCUS              XCB_BUTTON_INDEX_1
+#define RESIZE_ON_RELEASE           false
 #define SWALLOW_FIRST_CLICK         false
 #define IGNORE_EWMH_FOCUS           false
 #define IGNORE_EWMH_FULLSCREEN      0
@@ -101,6 +102,7 @@ extern bool focus_follows_pointer;
 extern bool pointer_follows_focus;
 extern bool pointer_follows_monitor;
 extern int8_t click_to_focus;
+extern bool resize_on_release;
 extern bool swallow_first_click;
 extern bool ignore_ewmh_focus;
 extern bool ignore_ewmh_struts;

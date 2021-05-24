@@ -43,6 +43,8 @@
 #define PRESEL_FEEDBACK_IC  PRESEL_FEEDBACK_I "\0" BSPWM_CLASS_NAME
 #define MOTION_RECORDER_I   "motion_recorder"
 #define MOTION_RECORDER_IC  MOTION_RECORDER_I "\0" BSPWM_CLASS_NAME
+#define RESIZE_INDICATOR_I      "resize_indicator"
+#define RESIZE_INDICATOR_IC      RESIZE_INDICATOR_I "\0" BSPWM_CLASS_NAME
 
 typedef struct {
 	xcb_window_t id;

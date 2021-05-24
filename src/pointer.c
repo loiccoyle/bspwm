@@ -258,6 +258,93 @@ bool grab_pointer(pointer_action_t pac)
 	return true;
 }
 
+resize_indicators_t initialize_resize_indicators(node_t n, resize_handle_t rh, pointer_action_t pac)
+{
+	bool horizontal_fence, vertical_fence;
+	uint16_t line_x, line_y;
+	uint16_t line_width = n.rectangle.width - window_gap, line_height = n.rectangle.height - window_gap;
+	uint32_t mask = XCB_CW_BACK_PIXEL | XCB_CW_OVERRIDE_REDIRECT;
+	uint32_t values[] = {get_color_pixel(active_border_color), 1};
+	xcb_window_t hor_win = xcb_generate_id(dpy);
+	xcb_window_t ver_win = xcb_generate_id(dpy);
+	if (rh & HANDLE_LEFT) {
+		line_x = n.rectangle.x;
+		vertical_fence = find_fence(&n, DIR_WEST) != NULL;
+	} else if (rh & HANDLE_RIGHT) {
+		line_x = n.rectangle.x + n.rectangle.width - window_gap;
+		vertical_fence = find_fence(&n, DIR_EAST) != NULL;
+	}
+	if (rh & HANDLE_TOP) {
+		line_y = n.rectangle.y;
+		horizontal_fence = find_fence(&n, DIR_NORTH) != NULL;
+	} else if (rh & HANDLE_BOTTOM) {
+		line_y = n.rectangle.y + n.rectangle.height - window_gap;
+		horizontal_fence = find_fence(&n, DIR_SOUTH) != NULL;
+	}
+	xcb_create_window(dpy, XCB_COPY_FROM_PARENT, hor_win, screen->root, n.rectangle.x, line_y, line_width, border_width, 0,
+					  XCB_WINDOW_CLASS_INPUT_OUTPUT, XCB_COPY_FROM_PARENT, mask, values);
+	xcb_create_window(dpy, XCB_COPY_FROM_PARENT, ver_win, screen->root, line_x, n.rectangle.y, border_width, line_height, 0,
+					  XCB_WINDOW_CLASS_INPUT_OUTPUT, XCB_COPY_FROM_PARENT, mask, values);
+	// Set a custom window class
+	xcb_icccm_set_wm_class(dpy, hor_win, sizeof(RESIZE_INDICATOR_IC), RESIZE_INDICATOR_IC);
+	xcb_icccm_set_wm_class(dpy, ver_win, sizeof(RESIZE_INDICATOR_IC), RESIZE_INDICATOR_IC);
+
+	resize_indicators_t lines;
+	lines.h_x = n.rectangle.x;
+	lines.h_y = line_y;
+	lines.v_x = line_x;
+	lines.v_y = n.rectangle.y;
+	lines.height = line_height;
+	lines.width = line_width;
+	lines.h_line = hor_win;
+	lines.v_line = ver_win;
+	// Which lines to show
+	if (!horizontal_fence && !vertical_fence) {
+		return lines;
+	}
+	if (pac == ACTION_RESIZE_CORNER){
+		if (horizontal_fence) {
+			xcb_map_window(dpy, lines.h_line);
+		}
+		if (vertical_fence) {
+			xcb_map_window(dpy, lines.v_line);
+		}
+	} else if (pac == ACTION_RESIZE_SIDE) {
+		if (rh & (HANDLE_LEFT | HANDLE_RIGHT) && horizontal_fence) {
+			xcb_map_window(dpy, lines.v_line);
+		} else if (rh & (HANDLE_TOP | HANDLE_BOTTOM) && vertical_fence) {
+			xcb_map_window(dpy, lines.h_line);
+		}
+	}
+	return lines;
+}
+
+void move_resize_indicators(resize_indicators_t *lines, node_t n, resize_handle_t rh, int dx, int dy, bool relative) {
+	uint16_t display_h_y;
+	uint16_t display_v_x;
+	if (relative) {
+		lines->v_x += dx;
+		lines->h_y += dy;
+	} else {
+		lines->v_x = dx;
+		lines->h_y = dy;
+	}
+	// Bound the lines to window/screen
+	if (rh & HANDLE_LEFT) {
+		display_v_x = MIN(MAX(lines->v_x, window_gap), n.rectangle.x + n.rectangle.width - window_gap);
+	} else if (rh & HANDLE_RIGHT) {
+		display_v_x = MIN(MAX(lines->v_x, n.rectangle.x), screen->width_in_pixels - window_gap);
+	}
+	if (rh & HANDLE_TOP) {
+		display_h_y = MIN(MAX(lines->h_y, window_gap), n.rectangle.y + n.rectangle.height - window_gap);
+	} else if (rh & HANDLE_BOTTOM) {
+		display_h_y = MIN(MAX(lines->h_y, n.rectangle.y), screen->height_in_pixels - window_gap);
+	}
+	// Could add some logic to change the height, width so the lines don't overlap and such?
+	xcb_configure_window(dpy, lines->v_line, XCB_CONFIG_WINDOW_X, &display_v_x);
+	xcb_configure_window(dpy, lines->h_line, XCB_CONFIG_WINDOW_Y, &display_h_y);
+}
+
 void track_pointer(coordinates_t loc, pointer_action_t pac, xcb_point_t pos)
 {
 	node_t *n = loc.node;
@@ -267,9 +354,15 @@ void track_pointer(coordinates_t loc, pointer_action_t pac, xcb_point_t pos)
 	xcb_timestamp_t last_motion_time = 0;
 
 	xcb_generic_event_t *evt = NULL;
+	resize_indicators_t lines;
 
 	grabbing = true;
 	grabbed_node = n;
+
+	if (resize_on_release && n->client->state == STATE_TILED){
+		// Create resize indicator lines
+		lines = initialize_resize_indicators(*n, rh, pac);
+	}
 
 	do {
 		free(evt);
@@ -277,8 +370,8 @@ void track_pointer(coordinates_t loc, pointer_action_t pac, xcb_point_t pos)
 			xcb_flush(dpy);
 		}
 		uint8_t resp_type = XCB_EVENT_RESPONSE_TYPE(evt);
+		xcb_motion_notify_event_t *e = (xcb_motion_notify_event_t*) evt;
 		if (resp_type == XCB_MOTION_NOTIFY) {
-			xcb_motion_notify_event_t *e = (xcb_motion_notify_event_t*) evt;
 			uint32_t dtime = e->time - last_motion_time;
 			if (dtime < pointer_motion_interval) {
 				continue;
@@ -288,6 +381,13 @@ void track_pointer(coordinates_t loc, pointer_action_t pac, xcb_point_t pos)
 			int16_t dy = e->root_y - last_motion_y;
 			if (pac == ACTION_MOVE) {
 				move_client(&loc, dx, dy);
+			} else if (resize_on_release && n->client->state == STATE_TILED) {
+				// Move the resize lines around
+				if (honor_size_hints) {
+					move_resize_indicators(&lines, *n, rh, e->root_x, e->root_y, false);
+				} else {
+					move_resize_indicators(&lines, *n,  rh, dx, dy, true);
+				}
 			} else {
 				if (honor_size_hints) {
 					resize_client(&loc, rh, e->root_x, e->root_y, false);
@@ -299,6 +399,15 @@ void track_pointer(coordinates_t loc, pointer_action_t pac, xcb_point_t pos)
 			last_motion_y = e->root_y;
 			xcb_flush(dpy);
 		} else if (resp_type == XCB_BUTTON_RELEASE) {
+			if (resize_on_release && pac != ACTION_MOVE && n->client->state == STATE_TILED) {
+				if (honor_size_hints) {
+					resize_client(&loc, rh, e->root_x, e->root_y, false);
+				} else {
+					resize_client(&loc, rh, e->root_x - pos.x, e->root_y - pos.y, true);
+				}
+				// not sure what this does
+				xcb_flush(dpy);
+			}
 			grabbing = false;
 		} else {
 			handle_event(evt);
@@ -307,6 +416,10 @@ void track_pointer(coordinates_t loc, pointer_action_t pac, xcb_point_t pos)
 	free(evt);
 
 	xcb_ungrab_pointer(dpy, XCB_CURRENT_TIME);
+	if (resize_on_release && n->client->state == STATE_TILED) {
+		xcb_destroy_window(dpy, lines.h_line);
+		xcb_destroy_window(dpy, lines.v_line);
+	}
 
 	if (grabbed_node == NULL) {
 		grabbing = false;
