@@ -322,6 +322,8 @@ resize_indicators_t initialize_resize_indicators(node_t n, resize_handle_t rh, p
 void move_resize_indicators(resize_indicators_t *lines, node_t n, resize_handle_t rh, int dx, int dy, bool relative) {
 	uint16_t display_h_y;
 	uint16_t display_v_x;
+	monitor_t *monitor = monitor_from_client(n.client);
+
 	if (relative) {
 		lines->v_x += dx;
 		lines->h_y += dy;
@@ -329,17 +331,23 @@ void move_resize_indicators(resize_indicators_t *lines, node_t n, resize_handle_
 		lines->v_x = dx;
 		lines->h_y = dy;
 	}
-	// Bound the lines to window/screen
+
+	// Bound the lines to window/monitor
 	if (rh & HANDLE_LEFT) {
-		display_v_x = MIN(MAX(lines->v_x, window_gap), n.rectangle.x + n.rectangle.width - window_gap);
+		display_v_x = MIN(MAX(lines->v_x, monitor->rectangle.x + monitor->padding.left + window_gap),
+				n.rectangle.x + n.rectangle.width - window_gap - 1);
 	} else if (rh & HANDLE_RIGHT) {
-		display_v_x = MIN(MAX(lines->v_x, n.rectangle.x), screen->width_in_pixels - window_gap);
+		display_v_x = MIN(MAX(lines->v_x, n.rectangle.x),
+				monitor->rectangle.x + monitor->rectangle.width - monitor->padding.right - window_gap);
 	}
 	if (rh & HANDLE_TOP) {
-		display_h_y = MIN(MAX(lines->h_y, window_gap), n.rectangle.y + n.rectangle.height - window_gap);
+		display_h_y = MIN(MAX(lines->h_y, monitor->rectangle.y + monitor->padding.top + window_gap),
+				n.rectangle.y + n.rectangle.height - window_gap - 1);
 	} else if (rh & HANDLE_BOTTOM) {
-		display_h_y = MIN(MAX(lines->h_y, n.rectangle.y), screen->height_in_pixels - window_gap);
+		display_h_y = MIN(MAX(lines->h_y, n.rectangle.y ),
+				monitor->rectangle.y + monitor->rectangle.height - monitor->padding.bottom - window_gap);
 	}
+
 	// Could add some logic to change the height, width so the lines don't overlap and such?
 	xcb_configure_window(dpy, lines->v_line, XCB_CONFIG_WINDOW_X, &display_v_x);
 	xcb_configure_window(dpy, lines->h_line, XCB_CONFIG_WINDOW_Y, &display_h_y);
